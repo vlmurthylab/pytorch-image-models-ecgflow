@@ -13,3 +13,5 @@ from .model import unwrap_model, get_state_dict, freeze, unfreeze, reparameteriz
 from .model_ema import ModelEma, ModelEmaV2
 from .random import random_seed
 from .summary import update_summary, get_outdir
+from .binary_classifier import MetricCollection, BINARY_METRICS, \
+    get_binary_torchmetrics, get_multilabel_torchmetrics

@@ -1,5 +1,6 @@
-torch>=1.7
+torch==2.1
 torchvision
 pyyaml
 huggingface_hub
 safetensors>=0.2
+torchmetrics

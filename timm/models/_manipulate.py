@@ -256,23 +256,36 @@ def checkpoint_seq(
 def adapt_input_conv(in_chans, conv_weight):
     conv_type = conv_weight.dtype
     conv_weight = conv_weight.float()  # Some weights are in torch.half, ensure it's float for sum on CPU
-    O, I, J, K = conv_weight.shape
+    I = conv_weight.shape[1]
+    conv_weight_dim = conv_weight.dim()
+    # O, I, J, K = conv_weight.shape
     if in_chans == 1:
-        if I > 3:
+        if I > 3 and conv_weight_dim == 4:
+            print(f'adapt_input_conv: in_chans {in_chans} I {I}')
+            O, I, J, K = conv_weight.shape
             assert conv_weight.shape[1] % 3 == 0
             # For models with space2depth stems
             conv_weight = conv_weight.reshape(O, I // 3, 3, J, K)
             conv_weight = conv_weight.sum(dim=2, keepdim=False)
         else:
             conv_weight = conv_weight.sum(dim=1, keepdim=True)
-    elif in_chans != 3:
-        if I != 3:
-            raise NotImplementedError('Weight format not supported by conversion.')
+    elif in_chans == 12 and conv_weight_dim == 3:
+        if I == 8:
+            # ecgflow: 1D case with 8 channel SSL pretrained model
+            print('adapt_input_conv: ecgflow input')
+            repeat = int(math.ceil(in_chans / 8))
+            conv_weight = conv_weight.repeat(1, repeat, 1)[:, :in_chans, :]
+            conv_weight *= (8 / float(in_chans))
         else:
+            raise NotImplementedError('Weight format not supported by conversion.')
+    elif in_chans != 3:
+        if I == 3:
             # NOTE this strategy should be better than random init, but there could be other combinations of
             # the original RGB input layer weights that'd work better for specific cases.
             repeat = int(math.ceil(in_chans / 3))
             conv_weight = conv_weight.repeat(1, repeat, 1, 1)[:, :in_chans, :, :]
             conv_weight *= (3 / float(in_chans))
+        else:
+            raise NotImplementedError('Weight format not supported by conversion.')
     conv_weight = conv_weight.to(conv_type)
     return conv_weight

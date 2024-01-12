@@ -26,7 +26,8 @@ def resample_abs_pos_embed(
     # sort out sizes, assume square if old size not provided
     num_pos_tokens = posemb.shape[1]
     num_new_tokens = new_size[0] * new_size[1] + num_prefix_tokens
-    if num_new_tokens == num_pos_tokens and new_size[0] == new_size[1]:
+    # if num_new_tokens == num_pos_tokens and new_size[0] == new_size[1]:
+    if num_new_tokens == num_pos_tokens:
         return posemb
 
     if old_size is None:

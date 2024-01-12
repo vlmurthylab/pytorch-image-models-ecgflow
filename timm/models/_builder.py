@@ -200,7 +200,9 @@ def load_pretrained(
             state_dict = filter_fn(state_dict)
 
     input_convs = pretrained_cfg.get('first_conv', None)
-    if input_convs is not None and in_chans != 3:
+    pretrained_in_chans = pretrained_cfg.get('input_size')[0]  # assume channels first
+    print(f'input_convs {input_convs}, in_chans {in_chans} pretrained_in_chans {pretrained_in_chans}')
+    if input_convs is not None and in_chans != pretrained_in_chans:
         if isinstance(input_convs, str):
             input_convs = (input_convs,)
         for input_conv_name in input_convs:
@@ -208,7 +210,8 @@ def load_pretrained(
             try:
                 state_dict[weight_name] = adapt_input_conv(in_chans, state_dict[weight_name])
                 _logger.info(
-                    f'Converted input conv {input_conv_name} pretrained weights from 3 to {in_chans} channel(s)')
+                    f'Converted input conv {input_conv_name} pretrained weights from '
+                    f'{pretrained_in_chans} to {in_chans} channel(s)')
             except NotImplementedError as e:
                 del state_dict[weight_name]
                 strict = False
@@ -234,7 +237,15 @@ def load_pretrained(
                 classifier_bias = state_dict[classifier_name + '.bias']
                 state_dict[classifier_name + '.bias'] = classifier_bias[label_offset:]
 
-    model.load_state_dict(state_dict, strict=strict)
+    load_result = model.load_state_dict(state_dict, strict=strict)
+    if load_result.missing_keys:
+        _logger.info(
+            f'Missing keys ({", ".join(load_result.missing_keys)}) discovered while loading pretrained weights.'
+            f' This is expected if model is being adapted.')
+    if load_result.unexpected_keys:
+        _logger.warning(
+            f'Unexpected keys ({", ".join(load_result.unexpected_keys)}) found while loading pretrained weights.'
+            f' This may be expected if model is being adapted.')
 
 
 def pretrained_cfg_for_features(pretrained_cfg):
@@ -253,7 +264,7 @@ def _filter_kwargs(kwargs, names):
         kwargs.pop(n, None)
 
 
-def _update_default_kwargs(pretrained_cfg, kwargs, kwargs_filter):
+def _update_default_model_kwargs(pretrained_cfg, kwargs, kwargs_filter):
     """ Update the default_cfg and kwargs before passing to model
 
     Args:
@@ -273,13 +284,18 @@ def _update_default_kwargs(pretrained_cfg, kwargs, kwargs_filter):
         if n == 'img_size':
             input_size = pretrained_cfg.get('input_size', None)
             if input_size is not None:
-                assert len(input_size) == 3
+                assert len(input_size) in (2, 3)
                 kwargs.setdefault(n, input_size[-2:])
         elif n == 'in_chans':
             input_size = pretrained_cfg.get('input_size', None)
             if input_size is not None:
-                assert len(input_size) == 3
+                assert len(input_size) in (2, 3)
                 kwargs.setdefault(n, input_size[0])
+        elif n == 'num_classes':
+            default_val = pretrained_cfg.get(n, None)
+            # if default is < 0, don't pass through to model
+            if default_val is not None and default_val >= 0:
+                kwargs.setdefault(n, pretrained_cfg[n])
         else:
             default_val = pretrained_cfg.get(n, None)
             if default_val is not None:
@@ -371,7 +387,7 @@ def build_model_with_cfg(
     # FIXME converting back to dict, PretrainedCfg use should be propagated further, but not into model
     pretrained_cfg = pretrained_cfg.to_dict()
 
-    _update_default_kwargs(pretrained_cfg, kwargs, kwargs_filter)
+    _update_default_model_kwargs(pretrained_cfg, kwargs, kwargs_filter)
 
     # Setup for feature extraction wrapper done at end of this fn
     if kwargs.pop('features_only', False):

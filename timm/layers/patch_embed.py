@@ -22,6 +22,80 @@ from .trace_utils import _assert
 _logger = logging.getLogger(__name__)
 
 
+class PatchEmbed1D(nn.Module):
+    """ 1D Sequence to Patch Embedding
+    """
+    output_fmt: Format
+    dynamic_img_pad: torch.jit.Final[bool]
+
+    def __init__(
+            self,
+            img_size: Optional[int] = 5000,
+            patch_size: int = 50,
+            in_chans: int = 12,
+            embed_dim: int = 768,
+            norm_layer: Optional[Callable] = None,
+            flatten: bool = True,
+            output_fmt: Optional[str] = None,
+            bias: bool = True,
+            strict_img_size: bool = True,
+            dynamic_img_pad: bool = False,
+    ):
+        super().__init__()
+        self.patch_size = patch_size
+        if img_size is not None:
+            self.img_size = img_size
+            self.grid_size = img_size // patch_size
+            self.num_patches = self.grid_size
+        else:
+            self.img_size = None
+            self.grid_size = None
+            self.num_patches = None
+
+        if output_fmt is not None:
+            self.flatten = False
+            self.output_fmt = Format(output_fmt)
+        else:
+            # transpose to channels last, kept for bwd compat
+            self.flatten = flatten
+            self.output_fmt = Format.NLC
+        self.strict_img_size = strict_img_size
+        self.dynamic_img_pad = dynamic_img_pad
+
+        print('img_size, patch_size, in_chans, embed_dim',
+              img_size, patch_size, in_chans, embed_dim)
+        self.proj = nn.Conv1d(in_chans,
+                              embed_dim,
+                              kernel_size=patch_size,
+                              stride=patch_size,
+                              bias=bias)
+        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+
+    def forward(self, x):
+        B, C, L = x.shape
+        if self.img_size is not None:
+            if self.strict_img_size:
+                _assert(L == self.img_size,
+                        f"Input height ({L}) doesn't match model "
+                        f"({self.img_size}).")
+            elif not self.dynamic_img_pad:
+                _assert(
+                    L % self.patch_size == 0,
+                    f"Input height ({L}) should be divisible by "
+                    f"patch size ({self.patch_size})."
+                )
+        if self.dynamic_img_pad:
+            pad_l = (self.patch_size - L % self.patch_size) % self.patch_size
+            x = F.pad(x, (0, pad_l))
+        x = self.proj(x)
+        if self.flatten:
+            x = x.flatten(2).transpose(1, 2)  # NCL -> NLC
+        elif self.output_fmt != Format.NCL:
+            x = nchw_to(x, self.output_fmt)
+        x = self.norm(x)
+        return x
+
+
 class PatchEmbed(nn.Module):
     """ 2D Image to Patch Embedding
     """
