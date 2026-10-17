@@ -5,7 +5,7 @@ v0.9.12](https://github.com/huggingface/pytorch-image-models) with
 changes to enable multi-channel electrocardiogram (ECG) input.
 
 Currently supports the 1D modified Vision Transformer (1dViT)
-architecture from [ecgflow](https://github.com/4dm-labs/ecgflow) but
+architecture from [ecgflow](https://github.com/vlmurthylab/ecgflow) but
 other architectures may be supported in the future.
 
 *Original timm README follows*
